@@ -9,6 +9,18 @@ import { useToast } from '@/hooks/use-toast';
 import MatrixBackground from '@/components/MatrixBackground';
 import { Code2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { z } from 'zod';
+
+const signupSchema = z.object({
+  fullName: z.string().min(2, 'Name must be at least 2 characters').max(100),
+  email: z.string().email('Invalid email address'),
+  password: z.string().min(6, 'Password must be at least 6 characters'),
+});
+
+const loginSchema = z.object({
+  email: z.string().email('Invalid email address'),
+  password: z.string().min(6, 'Password must be at least 6 characters'),
+});
 
 const Auth = () => {
   const [searchParams] = useSearchParams();
@@ -17,6 +29,8 @@ const Auth = () => {
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -43,35 +57,160 @@ const Auth = () => {
 
     try {
       if (isSignup) {
-        const { error } = await supabase.auth.signUp({
+        // Validate signup data
+        const result = signupSchema.safeParse({ fullName, email, password });
+        if (!result.success) {
+          toast({
+            title: 'Validation Error',
+            description: result.error.errors[0].message,
+            variant: 'destructive',
+          });
+          setLoading(false);
+          return;
+        }
+
+        const { data, error } = await supabase.auth.signUp({
           email,
           password,
           options: {
             data: { full_name: fullName },
-            emailRedirectTo: `${window.location.origin}/dashboard`,
+            emailRedirectTo: `${window.location.origin}/verification-upload`,
           },
         });
 
         if (error) throw error;
 
         toast({
-          title: 'Success!',
-          description: 'Account created successfully. You can now sign in.',
+          title: 'Check your email!',
+          description: 'We sent you a verification link. Please check your inbox.',
         });
-        setIsSignup(false);
+        
+        // Store email for potential resend
+        sessionStorage.setItem('pending_verification_email', email);
       } else {
+        // Validate login data
+        const result = loginSchema.safeParse({ email, password });
+        if (!result.success) {
+          toast({
+            title: 'Validation Error',
+            description: result.error.errors[0].message,
+            variant: 'destructive',
+          });
+          setLoading(false);
+          return;
+        }
+
         const { error } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
 
-        if (error) throw error;
+        if (error) {
+          if (error.message.includes('Email not confirmed')) {
+            toast({
+              title: 'Email not verified',
+              description: 'Please check your email and verify your account.',
+              variant: 'destructive',
+            });
+          } else if (error.message.includes('Invalid login credentials')) {
+            toast({
+              title: 'Invalid credentials',
+              description: 'Email or password is incorrect.',
+              variant: 'destructive',
+            });
+          } else {
+            throw error;
+          }
+          setLoading(false);
+          return;
+        }
 
         toast({
           title: 'Welcome back!',
           description: 'Signed in successfully.',
         });
       }
+    } catch (error: any) {
+      console.error('Auth error:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'An unexpected error occurred',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    if (!resetEmail) {
+      toast({
+        title: 'Error',
+        description: 'Please enter your email address',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const emailResult = z.string().email().safeParse(resetEmail);
+    if (!emailResult.success) {
+      toast({
+        title: 'Invalid email',
+        description: 'Please enter a valid email address',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
+        redirectTo: `${window.location.origin}/auth`,
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: 'Check your email',
+        description: 'Password reset link sent successfully',
+      });
+      setShowForgotPassword(false);
+      setResetEmail('');
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    const pendingEmail = sessionStorage.getItem('pending_verification_email') || email;
+    if (!pendingEmail) {
+      toast({
+        title: 'Error',
+        description: 'No email found for resend',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: pendingEmail,
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: 'Email sent',
+        description: 'Verification email has been resent',
+      });
     } catch (error: any) {
       toast({
         title: 'Error',
@@ -154,10 +293,69 @@ const Auth = () => {
           </Button>
         </form>
 
+        {!isSignup && !showForgotPassword && (
+          <div className="mt-4 text-center">
+            <button
+              onClick={() => setShowForgotPassword(true)}
+              className="text-sm text-primary hover:underline"
+            >
+              Forgot Password?
+            </button>
+          </div>
+        )}
+
+        {showForgotPassword && (
+          <div className="mt-6 space-y-4 border-t border-border pt-6">
+            <h3 className="text-lg font-semibold text-foreground">Reset Password</h3>
+            <div className="space-y-2">
+              <Label htmlFor="resetEmail">Email</Label>
+              <Input
+                id="resetEmail"
+                type="email"
+                placeholder="your@email.com"
+                value={resetEmail}
+                onChange={(e) => setResetEmail(e.target.value)}
+                className="bg-input"
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button
+                onClick={handleForgotPassword}
+                className="flex-1 shadow-glow-sm"
+                disabled={loading}
+              >
+                {loading ? 'Sending...' : 'Send Reset Link'}
+              </Button>
+              <Button
+                onClick={() => setShowForgotPassword(false)}
+                variant="outline"
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {isSignup && (
+          <div className="mt-4 text-center">
+            <button
+              onClick={handleResendVerification}
+              className="text-sm text-primary hover:underline"
+              disabled={loading}
+            >
+              Resend Verification Email
+            </button>
+          </div>
+        )}
+
         <div className="mt-6 text-center text-sm text-muted-foreground">
           {isSignup ? 'Already have an account?' : "Don't have an account?"}{' '}
           <button
-            onClick={() => setIsSignup(!isSignup)}
+            onClick={() => {
+              setIsSignup(!isSignup);
+              setShowForgotPassword(false);
+            }}
             className="font-medium text-primary hover:underline"
           >
             {isSignup ? 'Sign In' : 'Sign Up'}

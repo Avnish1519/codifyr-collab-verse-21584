@@ -28,7 +28,8 @@ const Dashboard = () => {
 
   useEffect(() => {
     const fetchProfile = async (userId: string) => {
-      const { data, error } = await supabase
+      const supabaseAny = supabase as any;
+      const { data, error } = await supabaseAny
         .from('profiles')
         .select('*')
         .eq('user_id', userId)
