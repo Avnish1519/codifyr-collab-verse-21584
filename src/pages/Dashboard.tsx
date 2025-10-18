@@ -7,6 +7,12 @@ import { User } from '@supabase/supabase-js';
 import { LogOut, Home, Code, MessageSquare, User as UserIcon, FolderKanban, Award, Zap } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { motion, AnimatePresence } from 'framer-motion';
+import MatrixBackground from '@/components/MatrixBackground';
+import ParticlesBackground from '@/components/ParticlesBackground';
+import CodeBot from '@/components/CodeBot';
+import XPBadge from '@/components/XPBadge';
 
 interface Profile {
   id: string;
@@ -24,7 +30,31 @@ const Dashboard = () => {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [selectedLanguage, setSelectedLanguage] = useState('react');
+  const [selectedTopic, setSelectedTopic] = useState('hooks');
+  const [showBadge, setShowBadge] = useState(false);
+  const [previousLevel, setPreviousLevel] = useState(0);
   const navigate = useNavigate();
+
+  const languages = [
+    { value: 'html', label: 'HTML' },
+    { value: 'css', label: 'CSS' },
+    { value: 'javascript', label: 'JavaScript' },
+    { value: 'typescript', label: 'TypeScript' },
+    { value: 'react', label: 'React' },
+    { value: 'nodejs', label: 'Node.js' },
+    { value: 'express', label: 'Express.js' },
+    { value: 'python', label: 'Python' },
+    { value: 'java', label: 'Java' },
+  ];
+
+  const topics = {
+    react: ['Hooks', 'Components', 'State Management', 'Props', 'Context API'],
+    javascript: ['ES6+', 'Async/Await', 'Promises', 'DOM Manipulation', 'Arrays'],
+    python: ['Data Structures', 'OOP', 'Decorators', 'Generators', 'Async'],
+    java: ['OOP', 'Collections', 'Streams', 'Multithreading', 'Spring Boot'],
+    nodejs: ['Express', 'APIs', 'Middleware', 'Authentication', 'Database'],
+  };
 
   useEffect(() => {
     const fetchProfile = async (userId: string) => {
@@ -37,6 +67,11 @@ const Dashboard = () => {
       
       if (data) {
         setProfile(data);
+        // Check for level up
+        if (previousLevel > 0 && data.level > previousLevel) {
+          setShowBadge(true);
+        }
+        setPreviousLevel(data.level);
       }
       setLoading(false);
     };
@@ -81,10 +116,27 @@ const Dashboard = () => {
     { icon: FolderKanban, label: 'Projects' },
   ];
 
+  const handleStartChallenges = () => {
+    navigate('/challenges');
+  };
+
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="relative flex min-h-screen bg-background">
+      <MatrixBackground />
+      <ParticlesBackground />
+      
+      <AnimatePresence>
+        {showBadge && (
+          <XPBadge
+            level={profile?.level || 1}
+            show={showBadge}
+            onComplete={() => setShowBadge(false)}
+          />
+        )}
+      </AnimatePresence>
+
       {/* Sidebar */}
-      <aside className="w-64 border-r border-border bg-sidebar p-6">
+      <aside className="relative z-10 w-64 border-r border-border bg-sidebar/80 backdrop-blur-md p-6">
         <div className="mb-8">
           <h1 className="bg-gradient-primary bg-clip-text text-2xl font-bold text-transparent">
             Codifyr
@@ -120,8 +172,13 @@ const Dashboard = () => {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 p-8">
-        <div className="mb-8">
+      <main className="relative z-10 flex-1 p-8">
+        <CodeBot />
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-8"
+        >
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-3xl font-bold text-foreground">Welcome back, {profile?.full_name || 'Coder'}!</h2>
@@ -134,11 +191,64 @@ const Dashboard = () => {
               {profile?.verification_status === 'approved' ? '✓ Verified' : '⏳ Pending Verification'}
             </Badge>
           </div>
-        </div>
+        </motion.div>
+
+        {/* Language & Topic Selection */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="mb-8"
+        >
+          <Card className="border-border bg-card/50 p-6">
+            <h3 className="mb-4 text-lg font-semibold text-foreground">Choose Your Focus</h3>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <label className="mb-2 block text-sm font-medium text-muted-foreground">
+                  Language
+                </label>
+                <Select value={selectedLanguage} onValueChange={setSelectedLanguage}>
+                  <SelectTrigger className="bg-input">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {languages.map((lang) => (
+                      <SelectItem key={lang.value} value={lang.value}>
+                        {lang.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-medium text-muted-foreground">
+                  Topic
+                </label>
+                <Select value={selectedTopic} onValueChange={setSelectedTopic}>
+                  <SelectTrigger className="bg-input">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(topics[selectedLanguage as keyof typeof topics] || topics.react).map((topic) => (
+                      <SelectItem key={topic.toLowerCase()} value={topic.toLowerCase()}>
+                        {topic}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </Card>
+        </motion.div>
 
         {/* XP and Level Section */}
-        <div className="mb-8">
-          <Card className="border-border bg-card/50 p-6">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: 0.2 }}
+          className="mb-8"
+        >
+          <Card className="border-border bg-card/50 p-6 shadow-glow-md transition-shadow hover:shadow-glow-lg">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
                 <Award className="h-8 w-8 text-primary" />
@@ -152,21 +262,34 @@ const Dashboard = () => {
                 <p className="text-lg font-semibold text-foreground">{xpForNextLevel} XP</p>
               </div>
             </div>
-            <Progress value={xpProgressPercent} className="h-3" />
+            <motion.div
+              initial={{ width: 0 }}
+              animate={{ width: '100%' }}
+              transition={{ duration: 1, delay: 0.5 }}
+            >
+              <Progress value={xpProgressPercent} className="h-3" />
+            </motion.div>
             <p className="mt-2 text-xs text-muted-foreground text-center">
               {xpProgress} / {xpForNextLevel} XP to next level
             </p>
           </Card>
-        </div>
+        </motion.div>
 
-        <div className="grid gap-6 md:grid-cols-3">
-          <Card className="border-border bg-card/50 p-6 hover:shadow-glow-md transition-shadow">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+          className="grid gap-6 md:grid-cols-3"
+        >
+          <Card className="border-border bg-card/50 p-6 hover:shadow-glow-md transition-shadow cursor-pointer"
+            onClick={handleStartChallenges}
+          >
             <div className="flex items-center gap-3 mb-4">
               <Zap className="h-6 w-6 text-primary" />
               <h3 className="text-lg font-semibold text-foreground">Daily Challenge</h3>
             </div>
             <p className="text-sm text-muted-foreground mb-4">Complete challenges to level up and earn XP</p>
-            <Button className="w-full shadow-glow-sm">Start Challenge</Button>
+            <Button onClick={handleStartChallenges} className="w-full shadow-glow-sm">Start Challenge</Button>
           </Card>
 
           <Card className="border-border bg-card/50 p-6 hover:shadow-glow-md transition-shadow">
@@ -200,7 +323,7 @@ const Dashboard = () => {
               {profile?.verification_status === 'approved' ? 'Find Partners' : 'Verify First'}
             </Button>
           </Card>
-        </div>
+        </motion.div>
 
         {profile?.verification_status !== 'approved' && (
           <div className="mt-8">
